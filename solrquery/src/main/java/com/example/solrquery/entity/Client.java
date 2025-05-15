@@ -16,8 +16,8 @@ import lombok.Setter;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name="solr")
-public class ClientSolr {
+@Table(name="solr_v2")
+public class Client {
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -26,6 +26,9 @@ public class ClientSolr {
   @Column(name = "nombre")
   private String name;
 
-  @Column(name = "url")
-  private String url;
+  @Column(name = "ip")
+  private String ip;
+
+  @Column(name = "puerto")
+  private Integer puerto;
 }
