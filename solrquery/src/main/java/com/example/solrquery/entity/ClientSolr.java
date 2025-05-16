@@ -7,28 +7,26 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.AllArgsConstructor;
-import lombok.Getter;
+import lombok.Data;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
-@Getter
-@Setter
+@Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name="solr_v2")
-public class Client {
+@Table(name="cliente_solr")
+public class ClientSolr {
 
   @Id
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
-  @Column(name = "nombre")
+  @Column(name = "nombre", nullable = false, unique=true)
   private String name;
 
-  @Column(name = "ip")
+  @Column(name = "ip", nullable = false)
   private String ip;
 
-  @Column(name = "puerto")
+  @Column(name = "puerto", nullable = false)
   private Integer puerto;
 }
