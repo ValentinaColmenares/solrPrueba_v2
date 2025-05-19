@@ -59,6 +59,11 @@ public class QuerySolrServiceImpl implements QuerySolrService{
             .body("La colección '" + request.getCore() + "' no existe para el cliente " + request.getClient());
         }
 
+        // Validación sort
+        if (!isValidSort(request.getSort())) {
+            return ResponseEntity.badRequest().body("El parámetro 'sort' debe tener el formato '<campo> asc' o '<campo> desc'.");
+        }
+
         // Validación start
         if (!isNullOrInteger(request.getStart())) {
             return ResponseEntity.badRequest().body("El parámetro 'start' debe ser un número entero.");
@@ -80,7 +85,6 @@ public class QuerySolrServiceImpl implements QuerySolrService{
 
         addIfNotBlank(builder, "q", request.getQ());
         addIfNotBlank(builder, "fq", request.getFq());
-        addIfNotBlank(builder, "sort", request.getSort());
         addIfNotBlank(builder, "start", request.getStart());
         addIfNotBlank(builder, "rows", request.getRows());
         addIfNotBlank(builder, "fl", request.getFl());
@@ -92,6 +96,9 @@ public class QuerySolrServiceImpl implements QuerySolrService{
         }
 
         String finalUrl = builder.build().encode().toUriString();
+        if (request.getSort()!=null){
+            finalUrl += (finalUrl.contains("?") ? "&" : "?") + "sort=" + request.getSort();
+        }
         log.info("URL armada para consulta Solr: {}", finalUrl);
         
         // Consulta a Solr
@@ -134,6 +141,11 @@ public class QuerySolrServiceImpl implements QuerySolrService{
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Error procesando la respuesta de Solr: " + e.getMessage());
         }
+    }
+
+    private boolean isValidSort(String sort) {
+        if (sort == null || sort.isBlank()) return true; 
+        return sort.matches("^[a-zA-Z0-9_.]+\\s+(asc|desc)$");
     }
     
     private boolean isNullOrInteger(String val) {

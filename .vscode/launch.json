@@ -1,0 +1,14 @@
+{
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Spring Boot-SolrqueryApplication<solrquery>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.example.solrquery.SolrqueryApplication",
+      "projectName": "solrquery",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env"
+    }
+  ]
+}
