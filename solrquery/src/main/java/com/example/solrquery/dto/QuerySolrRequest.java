@@ -10,7 +10,7 @@ public class QuerySolrRequest {
   
     @NotBlank(message = "El nombre del cliente es obligatorio")
     private String client;
-
+    
     @NotBlank(message = "La colección es obligatoria")
     private String core;
 

@@ -36,13 +36,9 @@ public class QuerySolrServiceImpl implements QuerySolrService{
 
         log.info("JSON recibido: {}", request);
 
-        // Validación cliente
+        // Validación ingreso de cliente
         if (request.getClient() == null || request.getClient().isBlank()) {
             return ResponseEntity.badRequest().body("El cliente es obligatorio.");
-        }
-        // Validación colección
-        if (request.getCore() == null || request.getCore().isBlank()) {
-            return ResponseEntity.badRequest().body("La colección es obligatoria.");
         }
 
         // Validación de cliente en MySQL
@@ -51,6 +47,11 @@ public class QuerySolrServiceImpl implements QuerySolrService{
         if (client == null) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body("Cliente no encontrado: " + request.getClient());
+        }
+
+        // Validación ingreso de colección
+        if (request.getCore() == null || request.getCore().isBlank()) {
+            return ResponseEntity.badRequest().body("La colección es obligatoria.");
         }
 
         // Validación de colección en Solr
@@ -76,7 +77,7 @@ public class QuerySolrServiceImpl implements QuerySolrService{
         if (request.getJsonFacet() != null && !request.getJsonFacet().isEmpty()) {
             if (!"on".equalsIgnoreCase(request.getFacet())) {
                 return ResponseEntity.badRequest()
-                        .body("Si se usa 'json.facet', debe pasar el parámetro 'facet' en 'on'.");
+                        .body("Si se usa 'json.facet', debe pasar el parámetro 'facet' en 'on'");
             }
         }
         // Construcción de URL
@@ -91,14 +92,19 @@ public class QuerySolrServiceImpl implements QuerySolrService{
         if ("on".equalsIgnoreCase(request.getFacet())) {
             builder.queryParam("facet", "on");
         }
-        if (request.getJsonFacet() != null && !request.getJsonFacet().isEmpty()) {
-            builder.queryParam("json.facet", new Gson().toJson(request.getJsonFacet()));
-        }
 
-        String finalUrl = builder.build().encode().toUriString();
-        if (request.getSort()!=null){
+        String finalUrl = builder.build(true).encode().toUriString();
+
+        if (request.getSort()!=null && !request.getSort().isEmpty()){
             finalUrl += (finalUrl.contains("?") ? "&" : "?") + "sort=" + request.getSort();
         }
+
+        if (request.getJsonFacet()!=null && !request.getJsonFacet().isEmpty()){
+            finalUrl += (finalUrl.contains("?") ? "&" : "?")+ "json.facet=" + new Gson().toJson(request.getJsonFacet());
+        }
+
+        log.info("json.facet enviado: {}", new Gson().toJson(request.getJsonFacet()));
+        log.info("URL sin json.facet: {}", builder.build(true).encode().toUriString());
         log.info("URL armada para consulta Solr: {}", finalUrl);
         
         // Consulta a Solr
@@ -111,11 +117,28 @@ public class QuerySolrServiceImpl implements QuerySolrService{
                     .body("Error al consultar Solr: " + e.getMessage());
         }
 
-        //log.info("Respuesta de Solr: ", solrResponse.getBody());
+        log.info("Respuesta de Solr: {}", solrResponse.getBody());
 
         return procesarRespuesta(solrResponse.getBody());
     }
-    // Entrega de docs y facets
+
+    // Validación de colección en Solr
+    private boolean coreExistsInSolr(ClientSolr client, String core) {
+        String url = "http://" + client.getIp() + ":" + client.getPuerto() + "/solr/admin/cores?action=STATUS";
+        try {
+            ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
+            if (response.getStatusCode().is2xxSuccessful()) {
+                JsonObject json = JsonParser.parseString(response.getBody()).getAsJsonObject();
+                JsonObject status = json.getAsJsonObject("status");
+                return status.has(core);
+            }
+        } catch (Exception e) {
+            log.error("Error consultando coleccion de Solr", e);
+        }
+        return false;
+    }
+
+    // Salida de docs y facets
     private ResponseEntity<?> procesarRespuesta(String solrJson) {
         try {
             JsonObject solrObj = JsonParser.parseString(solrJson).getAsJsonObject();
@@ -162,21 +185,6 @@ public class QuerySolrServiceImpl implements QuerySolrService{
         if (value != null && !value.isBlank()) {
             builder.queryParam(key, value);
         }
-    }
-    // Validación de colección en Solr
-    private boolean coreExistsInSolr(ClientSolr client, String core) {
-        String url = "http://" + client.getIp() + ":" + client.getPuerto() + "/solr/admin/cores?action=STATUS";
-        try {
-            ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
-            if (response.getStatusCode().is2xxSuccessful()) {
-                JsonObject json = JsonParser.parseString(response.getBody()).getAsJsonObject();
-                JsonObject status = json.getAsJsonObject("status");
-                return status.has(core);
-            }
-        } catch (Exception e) {
-            log.error("Error consultando coleccion de Solr", e);
-        }
-        return false;
     }
     
 }
