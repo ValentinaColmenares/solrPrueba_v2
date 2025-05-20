@@ -20,6 +20,5 @@ public class QuerySolrRequest {
     private String start;
     private String rows;
     private String fl;
-    private String facet;
     private Map<String, Object> jsonFacet;
 }

@@ -73,13 +73,6 @@ public class QuerySolrServiceImpl implements QuerySolrService{
         if (!isNullOrInteger(request.getRows())) {
             return ResponseEntity.badRequest().body("El parámetro 'rows' debe ser un número entero.");
         }
-        // Validación facet=on y json.facet 
-        if (request.getJsonFacet() != null && !request.getJsonFacet().isEmpty()) {
-            if (!"on".equalsIgnoreCase(request.getFacet())) {
-                return ResponseEntity.badRequest()
-                        .body("Si se usa 'json.facet', debe pasar el parámetro 'facet' en 'on'");
-            }
-        }
         // Construcción de URL
         String baseUrl = "http://" + client.getIp() + ":" + client.getPuerto() + "/solr/" + request.getCore() + "/select";
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(baseUrl);
@@ -89,9 +82,6 @@ public class QuerySolrServiceImpl implements QuerySolrService{
         addIfNotBlank(builder, "start", request.getStart());
         addIfNotBlank(builder, "rows", request.getRows());
         addIfNotBlank(builder, "fl", request.getFl());
-        if ("on".equalsIgnoreCase(request.getFacet())) {
-            builder.queryParam("facet", "on");
-        }
 
         String finalUrl = builder.build(true).encode().toUriString();
 
@@ -100,6 +90,7 @@ public class QuerySolrServiceImpl implements QuerySolrService{
         }
 
         if (request.getJsonFacet()!=null && !request.getJsonFacet().isEmpty()){
+            builder.queryParam("facet", "on");
             finalUrl += (finalUrl.contains("?") ? "&" : "?")+ "json.facet=" + new Gson().toJson(request.getJsonFacet());
         }
 
