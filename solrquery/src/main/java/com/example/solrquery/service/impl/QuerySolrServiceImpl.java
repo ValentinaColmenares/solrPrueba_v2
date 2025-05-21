@@ -1,10 +1,14 @@
 package com.example.solrquery.service.impl;
 
 import java.lang.reflect.Type;
+import java.net.URI;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -90,8 +94,9 @@ public class QuerySolrServiceImpl implements QuerySolrService{
         }
 
         if (request.getJsonFacet()!=null && !request.getJsonFacet().isEmpty()){
-            builder.queryParam("facet", "on");
-            finalUrl += (finalUrl.contains("?") ? "&" : "?")+ "json.facet=" + new Gson().toJson(request.getJsonFacet());
+            String json = new Gson().toJson(request.getJsonFacet());
+            String jsonEncoded = URLEncoder.encode(json, StandardCharsets.UTF_8);
+            finalUrl += (finalUrl.contains("?") ? "&" : "?") + "facet=on&"  + "json.facet=" + jsonEncoded;
         }
 
         log.info("json.facet enviado: {}", new Gson().toJson(request.getJsonFacet()));
@@ -101,7 +106,7 @@ public class QuerySolrServiceImpl implements QuerySolrService{
         // Consulta a Solr
         ResponseEntity<String> solrResponse;
         try {
-            solrResponse = restTemplate.getForEntity(finalUrl, String.class);
+            solrResponse = restTemplate.exchange(new URI(finalUrl), HttpMethod.GET, null, String.class);
         } catch (Exception e) {
             log.error("Error al consultar Solr", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
