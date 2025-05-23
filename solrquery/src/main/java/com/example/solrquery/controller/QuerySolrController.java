@@ -27,18 +27,18 @@ public class QuerySolrController {
   private final CopySolrServiceImpl copySolrService;
 
   @PostMapping("/index")
-    public ResponseEntity<?> indexarSolr(@RequestBody IndexSolrRequest request) {
-        return indexSolrService.indexar(request);
+    public ResponseEntity<?> indexSolr(@RequestBody IndexSolrRequest request) {
+        return indexSolrService.index(request);
   }
 
   @PostMapping("/copy")
-    public ResponseEntity<?> copyDocuments(@RequestBody CopySolrRequest request) {
-        return copySolrService.copiar(request);
+    public ResponseEntity<?> copySolr(@RequestBody CopySolrRequest request) {
+        return copySolrService.copy(request);
     }
 
-  @PostMapping("/consultar")
-  public ResponseEntity<?> consultarSolr(@RequestBody QuerySolrRequest request) {
-    return querySolrService.consultar(request);
+  @PostMapping("/consult")
+  public ResponseEntity<?> consultSolr(@RequestBody QuerySolrRequest request) {
+    return querySolrService.consult(request);
   }
   
 }

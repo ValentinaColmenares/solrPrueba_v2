@@ -36,7 +36,7 @@ public class QuerySolrServiceImpl implements QuerySolrService{
     private final ClientSolrRepository clientSolrRepository;
     private final RestTemplate restTemplate = new RestTemplate();
     
-    public ResponseEntity<?> consultar(QuerySolrRequest request){
+    public ResponseEntity<?> consult(QuerySolrRequest request){
 
         log.info("JSON recibido: {}", request);
 
@@ -78,7 +78,7 @@ public class QuerySolrServiceImpl implements QuerySolrService{
             return ResponseEntity.badRequest().body("El parámetro 'rows' debe ser un número entero.");
         }
         // Construcción de URL
-        String baseUrl = "http://" + client.getIp() + ":" + client.getPuerto() + "/solr/" + request.getCore() + "/select";
+        String baseUrl = "http://" + client.getIp() + ":" + client.getPort() + "/solr/" + request.getCore() + "/select";
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(baseUrl);
 
         addIfNotBlank(builder, "q", request.getQ());
@@ -115,12 +115,12 @@ public class QuerySolrServiceImpl implements QuerySolrService{
 
         log.info("Respuesta de Solr: {}", solrResponse.getBody());
 
-        return procesarRespuesta(solrResponse.getBody());
+        return processSolrResponse(solrResponse.getBody());
     }
 
     // Validación de colección en Solr
     private boolean coreExistsInSolr(ClientSolr client, String core) {
-        String url = "http://" + client.getIp() + ":" + client.getPuerto() + "/solr/admin/cores?action=STATUS";
+        String url = "http://" + client.getIp() + ":" + client.getPort() + "/solr/admin/cores?action=STATUS";
         try {
             ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
             if (response.getStatusCode().is2xxSuccessful()) {
@@ -135,7 +135,7 @@ public class QuerySolrServiceImpl implements QuerySolrService{
     }
 
     // Salida de docs y facets
-    private ResponseEntity<?> procesarRespuesta(String solrJson) {
+    private ResponseEntity<?> processSolrResponse(String solrJson) {
         try {
             JsonObject solrObj = JsonParser.parseString(solrJson).getAsJsonObject();
             JsonObject response = solrObj.getAsJsonObject("response");

@@ -1,6 +1,7 @@
 package com.example.solrquery.service.impl;
 
 import java.lang.reflect.Type;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -37,7 +38,7 @@ public class CopySolrServiceImpl {
     private final RestTemplate restTemplate = new RestTemplate();
     private final Gson gson = new Gson();
 
-    public ResponseEntity<?> copiar(CopySolrRequest request) {
+    public ResponseEntity<?> copy(CopySolrRequest request) {
         log.info("JSON recibido para copiar: {}", request);
 
         // Validación de parámetros obligatorios
@@ -77,7 +78,7 @@ public class CopySolrServiceImpl {
         }
 
         // Construir de URL de consulta para la colección de origen
-        String baseUrl = "http://" + client.getIp() + ":" + client.getPuerto()
+        String baseUrl = "http://" + client.getIp() + ":" + client.getPort()
                        + "/solr/" + request.getSourceCore() + "/select";
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(baseUrl);
         addIfNotBlank(builder, "q", request.getQ());
@@ -134,7 +135,7 @@ public class CopySolrServiceImpl {
         }
 
         // Indexación en colección destino
-        String updateUrl = "http://" + client.getIp() + ":" + client.getPuerto()
+        String updateUrl = "http://" + client.getIp() + ":" + client.getPort()
                          + "/solr/" + request.getTargetCore() + "/update?commit=true";
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -143,7 +144,7 @@ public class CopySolrServiceImpl {
 
         try {
             ResponseEntity<String> resp = restTemplate.postForEntity(updateUrl, entity, String.class);
-            log.info("Solr destino respondió: {}", resp.getBody());
+            log.info("Solr destino respondio: {}", resp.getBody());
         } catch (Exception e) {
             log.error("Error indexando en Solr destino", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -160,7 +161,7 @@ public class CopySolrServiceImpl {
 
     // Validación de colección en Solr
     private boolean coreExistsInSolr(ClientSolr client, String core) {
-        String url = "http://" + client.getIp() + ":" + client.getPuerto() + "/solr/admin/cores?action=STATUS";
+        String url = "http://" + client.getIp() + ":" + client.getPort() + "/solr/admin/cores?action=STATUS";
         try {
             ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
             if (response.getStatusCode().is2xxSuccessful()) {
@@ -176,7 +177,7 @@ public class CopySolrServiceImpl {
 
     // Construcción HashMap de campos del esquema
     private Map<String, String> fetchSolrSchemaFields(ClientSolr client, String core) {
-        String url = "http://" + client.getIp() + ":" + client.getPuerto()
+        String url = "http://" + client.getIp() + ":" + client.getPort()
                    + "/solr/" + core + "/schema/fields";
         try {
             String body = restTemplate.getForObject(url, String.class);
@@ -200,6 +201,54 @@ public class CopySolrServiceImpl {
         }
     }
 
+    // Validación tipos de dato
+    private boolean isValidType(Object value, String solrType) {
+        if (value == null) return true;
+        String t = solrType.toLowerCase();
+
+        if (value instanceof Collection) {
+            Collection<?> values = (Collection<?>) value;
+            for (Object v : values) {
+                if (!isValidTypeSingle(v, t)) return false;
+            }
+            return true;
+        }
+        
+        if (value.getClass().isArray()) {
+            int length = java.lang.reflect.Array.getLength(value);
+            for (int i = 0; i < length; i++) {
+                Object v = java.lang.reflect.Array.get(value, i);
+                if (!isValidTypeSingle(v, t)) return false;
+            }
+            return true;
+        }
+        
+        return isValidTypeSingle(value, t);
+    }
+
+    private boolean isValidTypeSingle(Object value, String solrType) {
+        if (value == null) return true;
+        if (solrType.contains("int") || solrType.contains("double") ||
+            solrType.contains("float") || solrType.contains("long")) {
+            try {
+                Double.parseDouble(value.toString());
+                return true;
+            } catch (NumberFormatException ex) {
+                return false;
+            }
+        }
+        if (solrType.contains("string") || solrType.contains("text")) {
+            return value instanceof String;
+        }
+        
+        return true;
+    }
+
+    private boolean isValidSort(String sort) {
+        if (sort == null || sort.isBlank()) return true; 
+        return sort.matches("^[a-zA-Z0-9_.]+\\s+(asc|desc)$");
+    }
+
     private boolean isNullOrInteger(String val) {
         if (val == null || val.isBlank()) return true;
         try {
@@ -214,32 +263,6 @@ public class CopySolrServiceImpl {
         if (value != null && !value.isBlank()) {
             builder.queryParam(key, value);
         }
-    }
-    // Validación tipos de dato
-    private boolean isValidType(Object value, String solrType) {
-        if (value == null) return true;
-        String t = solrType.toLowerCase();
-        
-        if (t.contains("int") || t.contains("double") || t.contains("float") || t.contains("long")) {
-            try {
-                Double.parseDouble(value.toString());
-                return true;
-            } catch (NumberFormatException ex) {
-                return false;
-            }
-        }
-
-        if (t.contains("string") || t.contains("text")) {
-        if (!(value instanceof String)) {
-            return false;
-        }
-    }
-        // Otros tipos
-        return true;
-    }
-    private boolean isValidSort(String sort) {
-        if (sort == null || sort.isBlank()) return true; 
-        return sort.matches("^[a-zA-Z0-9_.]+\\s+(asc|desc)$");
     }
 
 }

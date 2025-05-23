@@ -1,6 +1,7 @@
 package com.example.solrquery.service.impl;
 
 import java.lang.reflect.Type;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -37,7 +38,7 @@ public class IndexSolrServiceImpl implements IndexSolrService{
     private final RestTemplate restTemplate = new RestTemplate();
     private final Gson gson = new Gson();
 
-    public ResponseEntity<?> indexar(IndexSolrRequest request) {
+    public ResponseEntity<?> index(IndexSolrRequest request) {
         log.info("JSON recibido para indexar: {}", request);
         
         // Validación ingreso de cliente
@@ -98,7 +99,7 @@ public class IndexSolrServiceImpl implements IndexSolrService{
 
         // Indexación 
         String updateUrl = "http://" + client.getIp()
-                         + ":" + client.getPuerto()
+                         + ":" + client.getPort()
                          + "/solr/" + request.getCore()
                          + "/update?commit=true";
         log.info("URL para indexar en Solr: {}", updateUrl);
@@ -127,7 +128,7 @@ public class IndexSolrServiceImpl implements IndexSolrService{
 
     // Validación de colección en Solr
     private boolean coreExistsInSolr(ClientSolr client, String core) {
-        String url = "http://" + client.getIp() + ":" + client.getPuerto() + "/solr/admin/cores?action=STATUS";
+        String url = "http://" + client.getIp() + ":" + client.getPort() + "/solr/admin/cores?action=STATUS";
         try {
             ResponseEntity<String> response = restTemplate.getForEntity(url, String.class);
             if (response.getStatusCode().is2xxSuccessful()) {
@@ -143,7 +144,7 @@ public class IndexSolrServiceImpl implements IndexSolrService{
 
     // Construcción HashMap de campos del esquema
     private Map<String, String> fetchSolrSchemaFields(ClientSolr client, String core) {
-        String url = "http://" + client.getIp() + ":" + client.getPuerto()
+        String url = "http://" + client.getIp() + ":" + client.getPort()
                    + "/solr/" + core + "/schema/fields";
         try {
             String body = restTemplate.getForObject(url, String.class);
@@ -171,8 +172,31 @@ public class IndexSolrServiceImpl implements IndexSolrService{
     private boolean isValidType(Object value, String solrType) {
         if (value == null) return true;
         String t = solrType.toLowerCase();
+
+        if (value instanceof Collection) {
+            Collection<?> values = (Collection<?>) value;
+            for (Object v : values) {
+                if (!isValidTypeSingle(v, t)) return false;
+            }
+            return true;
+        }
         
-        if (t.contains("int") || t.contains("double") || t.contains("float") || t.contains("long")) {
+        if (value.getClass().isArray()) {
+            int length = java.lang.reflect.Array.getLength(value);
+            for (int i = 0; i < length; i++) {
+                Object v = java.lang.reflect.Array.get(value, i);
+                if (!isValidTypeSingle(v, t)) return false;
+            }
+            return true;
+        }
+        
+        return isValidTypeSingle(value, t);
+    }
+
+    private boolean isValidTypeSingle(Object value, String solrType) {
+        if (value == null) return true;
+        if (solrType.contains("int") || solrType.contains("double") ||
+            solrType.contains("float") || solrType.contains("long")) {
             try {
                 Double.parseDouble(value.toString());
                 return true;
@@ -180,13 +204,10 @@ public class IndexSolrServiceImpl implements IndexSolrService{
                 return false;
             }
         }
-
-        if (t.contains("string") || t.contains("text")) {
-        if (!(value instanceof String)) {
-            return false;
+        if (solrType.contains("string") || solrType.contains("text")) {
+            return value instanceof String;
         }
-    }
-        // Otros tipos
+        
         return true;
     }
 }

@@ -28,5 +28,5 @@ public class ClientSolr {
   private String ip;
 
   @Column(name = "puerto", nullable = false)
-  private Integer puerto;
+  private Integer port;
 }

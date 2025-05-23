@@ -5,5 +5,5 @@ import org.springframework.http.ResponseEntity;
 import com.example.solrquery.dto.IndexSolrRequest;
 
 public interface IndexSolrService {
-    ResponseEntity<?> indexar(IndexSolrRequest request);
+    ResponseEntity<?> index(IndexSolrRequest request);
 }
