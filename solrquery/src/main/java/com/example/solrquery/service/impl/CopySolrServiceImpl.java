@@ -37,6 +37,9 @@ public class CopySolrServiceImpl {
     private final ClientSolrRepository clientSolrRepository;
     private final RestTemplate restTemplate = new RestTemplate();
     private final Gson gson = new Gson();
+    private String protocol = "http://";
+    private String qt = "/select";
+    
 
     public ResponseEntity<?> copy(CopySolrRequest request) {
         log.info("JSON recibido para copiar: {}", request);
@@ -45,7 +48,7 @@ public class CopySolrServiceImpl {
         if (request.getClient().isBlank() ||
             request.getSourceCore().isBlank() ||
             request.getTargetCore().isBlank()) {
-            return ResponseEntity.badRequest().body("Cliente, colección origen y colección dstino son obligatorios.");
+            return ResponseEntity.badRequest().body("Cliente, colección origen y colección destino son obligatorios.");
         }
 
         // Validación de cliente en MySQL
@@ -78,8 +81,8 @@ public class CopySolrServiceImpl {
         }
 
         // Construir de URL de consulta para la colección de origen
-        String baseUrl = "http://" + client.getIp() + ":" + client.getPort()
-                       + "/solr/" + request.getSourceCore() + "/select";
+        String baseUrl = protocol + client.getIp() + ":" + client.getPort()
+                       + "/solr/" + request.getSourceCore() + qt;
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(baseUrl);
         addIfNotBlank(builder, "q", request.getQ());
         addIfNotBlank(builder, "fq", request.getFq());
@@ -114,7 +117,7 @@ public class CopySolrServiceImpl {
         List<Map<String, Object>> docs = gson.fromJson(docsJson, listType);
 
         for (Map<String, Object> doc : docs) {
-            doc.keySet().removeIf(field -> field.startsWith("_"));
+            doc.keySet().removeIf(field -> field.equals("_version_"));
         }
 
         // Validación de campos y tipos en colección destino
@@ -122,15 +125,15 @@ public class CopySolrServiceImpl {
         for (int i = 0; i < docs.size(); i++) {
             Map<String,Object> doc = docs.get(i);
             for (Map.Entry<String,Object> e : doc.entrySet()) {
-                if (!targetSchema.containsKey(e.getKey())) {
-                    return ResponseEntity.badRequest()
-                            .body("Doc " + (i+1) + ": campo desconocido '" + e.getKey() + "' para destino");
+
+                if (targetSchema.containsKey(e.getKey())){
+                    if (!isValidType(e.getValue(), targetSchema.get(e.getKey()))) {
+                        return ResponseEntity.badRequest()
+                                .body("Doc " + (i+1) + ": valor '" + e.getValue() +
+                                    "' no concuerda con tipo '" + targetSchema.get(e.getKey()) + "'");
+                    }
                 }
-                if (!isValidType(e.getValue(), targetSchema.get(e.getKey()))) {
-                    return ResponseEntity.badRequest()
-                            .body("Doc " + (i+1) + ": valor '" + e.getValue() +
-                                  "' no concuerda con tipo '" + targetSchema.get(e.getKey()) + "'");
-                }
+
             }
         }
 

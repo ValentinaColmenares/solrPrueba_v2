@@ -86,6 +86,8 @@ public class QuerySolrServiceImpl implements QuerySolrService{
         addIfNotBlank(builder, "start", request.getStart());
         addIfNotBlank(builder, "rows", request.getRows());
         addIfNotBlank(builder, "fl", request.getFl());
+        addIfNotBlank(builder, "facet.query", request.getFacetQuery());
+        addIfNotBlank(builder, "facet.field", request.getFacetField());
 
         String finalUrl = builder.build(true).encode().toUriString();
 
@@ -96,7 +98,12 @@ public class QuerySolrServiceImpl implements QuerySolrService{
         if (request.getJsonFacet()!=null && !request.getJsonFacet().isEmpty()){
             String json = new Gson().toJson(request.getJsonFacet());
             String jsonEncoded = URLEncoder.encode(json, StandardCharsets.UTF_8);
-            finalUrl += (finalUrl.contains("?") ? "&" : "?") + "facet=on&"  + "json.facet=" + jsonEncoded;
+            finalUrl += (finalUrl.contains("?") ? "&" : "?") + "json.facet=" + jsonEncoded;
+        }
+
+        if ((request.getFacetQuery()!=null && !request.getFacetQuery().isEmpty())||
+            (request.getFacetField()!=null && !request.getFacetField().isEmpty())){
+            finalUrl += "&facet=on";
         }
 
         log.info("json.facet enviado: {}", new Gson().toJson(request.getJsonFacet()));
@@ -141,15 +148,19 @@ public class QuerySolrServiceImpl implements QuerySolrService{
             JsonObject response = solrObj.getAsJsonObject("response");
             int numFound = response.get("numFound").getAsInt();
 
-            if (numFound == 0) {
+            if (numFound == 0 && (!(solrObj.has("facet_counts"))) && (!(solrObj.has("facets"))) ) {
                 return ResponseEntity.ok("No hay resultados");
             }
             JsonArray docs = response.getAsJsonArray("docs");
+            JsonObject facetCounts = solrObj.has("facet_counts") ? solrObj.getAsJsonObject("facet_counts") : null;
             JsonObject facets = solrObj.has("facets") ? solrObj.getAsJsonObject("facets") : null;
             Type listType = new TypeToken<List<Map<String, Object>>>(){}.getType();
             List<Map<String, Object>> docsList = new Gson().fromJson(docs, listType);
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("docs", docsList);
+            if (facetCounts != null) {
+                result.put("facet_counts", new Gson().fromJson(facetCounts, Map.class));
+            }
             if (facets != null) {
                 result.put("facets", new Gson().fromJson(facets, Map.class));
             }

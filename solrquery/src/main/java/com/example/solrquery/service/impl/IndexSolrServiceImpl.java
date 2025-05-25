@@ -84,15 +84,13 @@ public class IndexSolrServiceImpl implements IndexSolrService{
                 String field = entry.getKey();
                 Object value = entry.getValue();
 
-                if (!schemaFields.containsKey(field)) {
-                    return ResponseEntity.badRequest()
-                            .body("Documento " + (i+1) + ": campo desconocido '" + field + "'");
-                }
-                String solrType = schemaFields.get(field);
-                if (!isValidType(value, solrType)) {
-                    return ResponseEntity.badRequest()
-                            .body("Documento " + (i+1) + ": valor '" + value +
-                                  "' no concuerda con el tipo '" + solrType + "' de campo '" + field + "'");
+                if(schemaFields.containsKey(field)){
+                    String solrType = schemaFields.get(field);
+                    if (!isValidType(value, solrType)) {
+                        return ResponseEntity.badRequest()
+                                .body("Documento " + (i+1) + ": valor '" + value +
+                                    "' no concuerda con el tipo '" + solrType + "' de campo '" + field + "'");
+                    }
                 }
             }
         }
