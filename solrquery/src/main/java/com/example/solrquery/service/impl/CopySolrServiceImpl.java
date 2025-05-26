@@ -20,6 +20,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 import com.example.solrquery.dto.CopySolrRequest;
 import com.example.solrquery.entity.ClientSolr;
 import com.example.solrquery.repository.ClientSolrRepository;
+import com.example.solrquery.service.CopySolrService;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
@@ -32,7 +33,7 @@ import lombok.extern.slf4j.Slf4j;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class CopySolrServiceImpl {
+public class CopySolrServiceImpl implements CopySolrService{
 
     private final ClientSolrRepository clientSolrRepository;
     private final RestTemplate restTemplate = new RestTemplate();
