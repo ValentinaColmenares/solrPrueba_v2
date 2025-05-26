@@ -59,11 +59,23 @@ public class CopySolrServiceImpl implements CopySolrService{
                     .body("Cliente no encontrado: " + request.getClient());
         }
 
-        // Validación de ambas colecciones en Solr
+        // Validación ingreso de colección origen
+        if (request.getSourceCore() == null || request.getSourceCore().isBlank()) {
+            return ResponseEntity.badRequest().body("La colección origen es obligatoria.");
+        }
+
+        // Validación de colección origen en Solr
         if (!coreExistsInSolr(client, request.getSourceCore())) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body("La colección origen '" + request.getSourceCore() + "' no existe.");
         }
+
+        // Validación ingreso de colección destino
+        if (request.getTargetCore() == null || request.getTargetCore().isBlank()) {
+            return ResponseEntity.badRequest().body("La colección destino es obligatoria.");
+        }
+
+        // Validación de colección destino en Solr
         if (!coreExistsInSolr(client, request.getTargetCore())) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND)
                     .body("La colección destino '" + request.getTargetCore() + "' no existe.");
