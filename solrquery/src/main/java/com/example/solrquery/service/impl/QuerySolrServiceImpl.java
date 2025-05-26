@@ -40,6 +40,16 @@ public class QuerySolrServiceImpl implements QuerySolrService{
 
         log.info("JSON recibido: {}", request);
 
+        // Validación ingreso de protocolo
+        if (request.getProtocol() == null || request.getProtocol().isBlank()) {
+            request.setProtocol("http"); 
+        }
+
+        // Validación ingreso de tipo de consulta
+        if (request.getQt() == null || request.getQt().isBlank()) {
+            request.setQt("select");;
+        }
+
         // Validación ingreso de cliente
         if (request.getClient() == null || request.getClient().isBlank()) {
             return ResponseEntity.badRequest().body("El cliente es obligatorio.");
@@ -77,8 +87,9 @@ public class QuerySolrServiceImpl implements QuerySolrService{
         if (!isNullOrInteger(request.getRows())) {
             return ResponseEntity.badRequest().body("El parámetro 'rows' debe ser un número entero.");
         }
+
         // Construcción de URL
-        String baseUrl = "http://" + client.getIp() + ":" + client.getPort() + "/solr/" + request.getCore() + "/select";
+        String baseUrl = request.getProtocol() + "://" + client.getIp() + ":" + client.getPort() + "/solr/" + request.getCore() + "/" + request.getQt();
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(baseUrl);
 
         addIfNotBlank(builder, "q", request.getQ());
@@ -105,10 +116,6 @@ public class QuerySolrServiceImpl implements QuerySolrService{
             (request.getFacetField()!=null && !request.getFacetField().isEmpty())){
             finalUrl += "&facet=on";
         }
-
-        log.info("json.facet enviado: {}", new Gson().toJson(request.getJsonFacet()));
-        log.info("URL sin json.facet: {}", builder.build(true).encode().toUriString());
-        log.info("URL armada para consulta Solr: {}", finalUrl);
         
         // Consulta a Solr
         ResponseEntity<String> solrResponse;
@@ -117,7 +124,7 @@ public class QuerySolrServiceImpl implements QuerySolrService{
         } catch (Exception e) {
             log.error("Error al consultar Solr", e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error al consultar Solr: " + e.getMessage());
+                    .body("Error al consultar Solr, revise los parámetros: " + e.getMessage());
         }
 
         log.info("Respuesta de Solr: {}", solrResponse.getBody());
@@ -141,7 +148,7 @@ public class QuerySolrServiceImpl implements QuerySolrService{
         return false;
     }
 
-    // Salida de docs y facets
+    // Salida de docs, facet_count y facets
     private ResponseEntity<?> processSolrResponse(String solrJson) {
         try {
             JsonObject solrObj = JsonParser.parseString(solrJson).getAsJsonObject();

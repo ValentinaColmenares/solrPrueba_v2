@@ -37,8 +37,8 @@ public class CopySolrServiceImpl {
     private final ClientSolrRepository clientSolrRepository;
     private final RestTemplate restTemplate = new RestTemplate();
     private final Gson gson = new Gson();
-    private String protocol = "http://";
-    private String qt = "/select";
+    private String protocol = "http";
+    private String qt = "select";
     
 
     public ResponseEntity<?> copy(CopySolrRequest request) {
@@ -80,9 +80,9 @@ public class CopySolrServiceImpl {
                     .body("El parámetro 'sort' debe tener formato '<campo> asc' o '<campo> desc'.");
         }
 
-        // Construir de URL de consulta para la colección de origen
-        String baseUrl = protocol + client.getIp() + ":" + client.getPort()
-                       + "/solr/" + request.getSourceCore() + qt;
+        // Construcción URL de consulta para la colección origen
+        String baseUrl = protocol + "://" + client.getIp() + ":" + client.getPort()
+                       + "/solr/" + request.getSourceCore() + "/" + qt;
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(baseUrl);
         addIfNotBlank(builder, "q", request.getQ());
         addIfNotBlank(builder, "fq", request.getFq());
@@ -120,7 +120,7 @@ public class CopySolrServiceImpl {
             doc.keySet().removeIf(field -> field.equals("_version_"));
         }
 
-        // Validación de campos y tipos en colección destino
+        // Validación de tipos en colección destino
         Map<String,String> targetSchema = fetchSolrSchemaFields(client, request.getTargetCore());
         for (int i = 0; i < docs.size(); i++) {
             Map<String,Object> doc = docs.get(i);

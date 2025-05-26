@@ -77,7 +77,7 @@ public class IndexSolrServiceImpl implements IndexSolrService{
                     .body("No se pudo obtener el esquema de campos de Solr");
         }
 
-        // Validación de campos y tipos
+        // Validación de tipos
         for (int i = 0; i < request.getDocs().size(); i++) {
             Map<String, Object> doc = request.getDocs().get(i);
             for (Map.Entry<String, Object> entry : doc.entrySet()) {

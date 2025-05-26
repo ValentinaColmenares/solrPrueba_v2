@@ -14,6 +14,8 @@ public class QuerySolrRequest {
     @NotBlank(message = "La colección es obligatoria")
     private String core;
 
+    private String protocol;
+    private String qt;
     private String q;
     private String fq;
     private String sort;
