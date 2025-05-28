@@ -8,14 +8,11 @@ import com.example.solrquery.dto.CreateCopyFieldsRequest;
 import com.example.solrquery.dto.DuplicateFieldsRequest;
 import com.example.solrquery.dto.IndexSolrRequest;
 import com.example.solrquery.dto.QuerySolrRequest;
-import com.example.solrquery.service.SolrSchemaService;
 import com.example.solrquery.service.impl.CopySolrServiceImpl;
-import com.example.solrquery.service.impl.CreateCopyFieldsServiceImpl;
-import com.example.solrquery.service.impl.DuplicateFieldsServiceImpl;
 import com.example.solrquery.service.impl.IndexSolrServiceImpl;
 import com.example.solrquery.service.impl.QuerySolrServiceImpl;
+import com.example.solrquery.service.impl.SchemaServiceImpl;
 
-import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
 import org.springframework.http.ResponseEntity;
@@ -31,9 +28,7 @@ public class QuerySolrController {
   private final IndexSolrServiceImpl indexSolrService;
   private final QuerySolrServiceImpl querySolrService;
   private final CopySolrServiceImpl copySolrService;
-  //private final DuplicateFieldsServiceImpl duplicateFieldsService;
-  //private final CreateCopyFieldsServiceImpl createCopyFieldsService;
-  private final SolrSchemaService schemaService;
+  private final SchemaServiceImpl schemaService;
 
   @PostMapping("/index")
     public ResponseEntity<?> indexSolr(@RequestBody IndexSolrRequest request) {
@@ -50,28 +45,14 @@ public class QuerySolrController {
     return querySolrService.consult(request);
   }
 
-  /*@PostMapping("/duplicateFields")
+  @PostMapping("/duplicateFields")
   public ResponseEntity<?> duplicateFieldsSolr(@RequestBody DuplicateFieldsRequest request){
-    return duplicateFieldsService.duplicateFields(request);
+    return schemaService.duplicateFields(request);
   }
 
   @PostMapping("/createCopyFields")
   public ResponseEntity<?> createCopyFieldsSolr(@RequestBody CreateCopyFieldsRequest request){
-    return createCopyFieldsService.createCopyFields(request);
-  }*/
-
-  @PostMapping("/duplicateFields")
-    public ResponseEntity<?> duplicateFields(
-            @Valid @RequestBody DuplicateFieldsRequest req
-    ) {
-        return schemaService.duplicateFields(req);
-    }
-
-    @PostMapping("/createCopyFields")
-    public ResponseEntity<?> createCopyFields(
-            @Valid @RequestBody CreateCopyFieldsRequest req
-    ) {
-        return schemaService.createCopyFields(req);
-    }
+    return schemaService.createCopyFields(request);
+  }
   
 }

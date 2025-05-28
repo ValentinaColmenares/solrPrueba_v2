@@ -10,6 +10,6 @@ public class CreateCopyFieldsRequest {
   private String client;
 
   @NotBlank(message = "La colección origen es obligatoria")
-  private String Core;
+  private String core;
 
 }

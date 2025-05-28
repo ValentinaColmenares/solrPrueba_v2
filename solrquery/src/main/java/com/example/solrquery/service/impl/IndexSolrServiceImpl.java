@@ -153,9 +153,9 @@ public class IndexSolrServiceImpl implements IndexSolrService{
             List<JsonObject> fields = gson.fromJson(arr, listType);
 
             Map<String,String> map = new HashMap<>();
-            for (JsonObject f : fields) {
-                String name = f.get("name").getAsString();
-                String type = f.get("type").getAsString();
+            for (JsonObject field : fields) {
+                String name = field.get("name").getAsString();
+                String type = field.get("type").getAsString();
                 map.put(name, type);
             }
             log.info("Campos del esquema de Solr para coleccion '{}': {}", core, map);
