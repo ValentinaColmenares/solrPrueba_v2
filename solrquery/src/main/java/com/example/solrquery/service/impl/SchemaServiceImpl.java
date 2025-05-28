@@ -154,89 +154,56 @@ public class SchemaServiceImpl implements SchemaService{
                     .body("La colección origen '" + request.getCore() + "' no existe.");
         }
 
+        // Validación ingreso de campo
+        if (request.getField() == null || request.getField().isBlank()) {
+            return ResponseEntity.badRequest().body("El campo para hacerle copyField es obligatorio.");
+        }
+
+        // Validación de que exista el campo a hacerle el copyField
+        Map<String, String> fields = fetchSchemaFields(client, request.getCore());
+        if(!fields.containsKey(request.getField())){
+            return ResponseEntity.badRequest().body("El campo " + request.getField() + " no existe en la colección " + request.getCore());
+        }
+
+        // Validación ingreso de tipo de copyField
+        if (request.getTypeCopyField() == null || request.getTypeCopyField().isBlank()) {
+            return ResponseEntity.badRequest().body("Es obligatorio el tipo de dato para hacer el copyField.");
+        }
+
+        // Validación de que exista el tipo de campo en dynamicFields
+        Map<String, String> dynamicFields = fetchDynamicFields(client, request.getCore());
+        if(!dynamicFields.containsKey(request.getTypeCopyField())){
+            return ResponseEntity.badRequest().body("El tipo de dato " + request.getTypeCopyField() + " no existe.");
+        }
+
+        // Validación de existencia del copyField solicitado
+        List<Map<String,String>> copyFields = fetchCopyFields(client, request.getCore());
+        String destField = request.getField() + "_" + request.getTypeCopyField();
+        if(copyFields.stream().anyMatch(m -> m.get("source").equals(request.getField()) &&
+                            m.get("dest").equals(destField))){
+            return ResponseEntity.badRequest().body("El copyField solicitado ya existe");
+        }
+        
+        // Creación de copyfields
         String schemaUrl = buildBaseUrl(client, request.getCore() + "/schema");
 
-        // Validación de que exista el campo _text_
-        Map<String, String> fieldMap = fetchSchemaFields(client, request.getCore());
-        if(!fieldMap.containsKey("_text_")){
-            JsonObject addTextField = new JsonObject();
-            addTextField.addProperty("name", "_text_");
-            addTextField.addProperty("type", "text_general");
-            addTextField.addProperty("multiValued", true);
-            addTextField.addProperty("indexed", true);
-            addTextField.addProperty("stored", false);
-            JsonObject body = new JsonObject();
-            body.add("add-field", addTextField);
-            restTemplate.postForEntity(schemaUrl, new HttpEntity<>(gson.toJson(body), headers), String.class);
-            fieldMap = fetchSchemaFields(client, request.getCore());
-        }
-
-        // Validación o creación de copyField (* -> _text_) si no existe
-        List<Map<String,String>> copyFields = fetchCopyFields(client, request.getCore());
-        boolean hasCatchAll = copyFields.stream().anyMatch(m -> m.get("source").equals("*") &&
-                            m.get("dest").equals("_text_"));
-        List<JsonObject> newCopyFields = new ArrayList<>();
-        if (!hasCatchAll) {
-            JsonObject catchAll = new JsonObject();
-            catchAll.addProperty("source", "*");
-            catchAll.addProperty("dest", "_text_");
-            newCopyFields.add(catchAll);
-        }
-
-        // Análisis de campos para crear copyFields
-        List<JsonObject> fields = fetchRawSchemaFields(client, request.getCore());
-        for (JsonObject field : fields) {
-            String name = field.get("name").getAsString();
-            String type = field.get("type").getAsString().toLowerCase();
-
-            if (name.startsWith("_")) continue;
-
-            boolean exists = copyFields.stream()
-                .anyMatch(m -> m.get("source").equals(name) && m.get("dest").startsWith(name + "_"));
-            if (exists) continue;
-
-            String suffix;
-            if (type.contains("text_general")) {
-                suffix = "_str";
-            } else if (type.contains("date")) {
-                suffix = "_dt";
-            } else if (type.contains("double")) {
-                suffix = "_d";
-            } else if (type.contains("float")) {
-                suffix = "_f";
-            } else if (type.contains("long")) {
-                suffix = "_l";
-            } else if (type.contains("int")) {
-                suffix = "_i";
-            } else {
-                continue; 
-            }
-
-            JsonObject newCopyField = new JsonObject();
-            newCopyField.addProperty("source", name);
-            newCopyField.addProperty("dest", name + suffix);
-            newCopyFields.add(newCopyField);
-        }
-
-        // Creación de copyfields
-        List<Map<String,String>> created = new ArrayList<>();
-        if (!newCopyFields.isEmpty()) {
-            JsonObject command = new JsonObject();
-            JsonArray arr = new JsonArray();
-            newCopyFields.forEach(arr::add);
-            command.add("add-copy-field", arr);
-            restTemplate.postForEntity(schemaUrl, new HttpEntity<>(gson.toJson(command), headers), String.class);
-        
-            newCopyFields.forEach(copyField -> created.add(Map.of(
-                "source", copyField.get("source").getAsString(),
-                "dest",   copyField.get("dest").getAsString()
-            )));
-        }
+        JsonObject newCopyField = new JsonObject();
+        newCopyField.addProperty("source", request.getField());
+        newCopyField.addProperty("dest", destField);
+        JsonArray arr = new JsonArray();
+        arr.add(newCopyField);
+        JsonObject command = new JsonObject();    
+        command.add("add-copy-field", arr);
+        restTemplate.postForEntity(schemaUrl, new HttpEntity<>(gson.toJson(command), headers), String.class);
+    
+        Map<String, String> created = Map.of(
+            "source", newCopyField.get("source").getAsString(),
+            "dest",   newCopyField.get("dest").getAsString()
+        );
 
         return ResponseEntity.ok(
             Map.of(
-                "catchAllCopyField", Map.of("source","*", "dest", "_text_"),
-                "createdCopyFields", created
+                "createdCopyField", created
             )
         );
     }
@@ -302,6 +269,29 @@ public class SchemaServiceImpl implements SchemaService{
             ));
         }
         return out;
+    }
+
+    // Obtener DynamicFields de la colección
+    private Map<String, String> fetchDynamicFields(ClientSolr client, String core){
+        String url = buildBaseUrl(client, core) + "/schema/dynamicfields";
+        String body = restTemplate.getForObject(url, String.class);
+        JsonObject root = JsonParser.parseString(body).getAsJsonObject();
+        JsonArray arr = root.getAsJsonArray("dynamicFields");
+        Type listType = new TypeToken<List<JsonObject>>(){}.getType();
+        List<JsonObject> fields = gson.fromJson(arr, listType);
+        Map<String,String> map = new HashMap<>();
+        for (JsonObject field : fields) {
+            String name = field.get("name").getAsString();
+            if (name.startsWith("*_")) {
+                name = name.substring(2);
+            }else{
+                continue;
+            }
+            String type = field.get("type").getAsString();
+            map.put(name, type);
+        }
+        log.info("Campos de dynamicFields para coleccion '{}': {}", core, map);
+        return map;
     }
 
 }
