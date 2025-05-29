@@ -17,4 +17,6 @@ public class CreateCopyFieldsRequest {
 
   @NotBlank(message = "El tipo de copyField es obligatorio")
   private String typeCopyField;
+
+  private Integer maxChars = 256;
 }

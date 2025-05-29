@@ -175,6 +175,35 @@ public class SchemaServiceImpl implements SchemaService{
         if(!dynamicFields.containsKey(request.getTypeCopyField())){
             return ResponseEntity.badRequest().body("El tipo de dato " + request.getTypeCopyField() + " no existe.");
         }
+        
+        // Validación para no permitir multivalue -> single
+        List<JsonObject> fieldsDef = fetchRawSchemaFields(client, request.getCore());
+        JsonObject sourceFieldDef = fieldsDef.stream()
+            .filter(f -> f.get("name").getAsString().equals(request.getField()))
+            .findFirst().orElseThrow(() -> new IllegalArgumentException(
+        "El campo '" + request.getField() + "' no existe en el esquema"));
+        String sourceFieldType = sourceFieldDef.get("type").getAsString();
+        boolean sourceFieldMulti = sourceFieldDef.has("multiValued") && sourceFieldDef.get("multiValued").getAsBoolean();
+
+        List<JsonObject> dynamicFieldsDefs = fetchRawDynamicFields(client, request.getCore());
+        JsonObject destDynamicDef = dynamicFieldsDefs.stream()
+            .filter(f -> f.get("name").getAsString().equals("*_" + request.getTypeCopyField()))
+            .findFirst().orElseThrow(() -> new IllegalArgumentException(
+        "El tipo '" + request.getTypeCopyField() + "' no existe en dynamicFields"));
+        String destDynamicType = destDynamicDef.get("type").getAsString();
+        boolean destDynamicMulti = destDynamicDef.has("multiValued") && destDynamicDef.get("multiValued").getAsBoolean();
+
+        if(sourceFieldMulti && !destDynamicMulti){
+            return ResponseEntity.badRequest().body(
+            "No es posible crear un copyField desde un campo multivalor a uno de valor único.");
+        }
+
+        // Validación de compatibilidad de tipos
+        if (!isCompatibleType(sourceFieldType, destDynamicType)) {
+            return ResponseEntity.badRequest().body(
+                "No es posible crear un copyField de tipo '" + sourceFieldType +
+                "' a tipo dinámico '" + destDynamicType + "'.");
+        }
 
         // Validación de existencia del copyField solicitado
         List<Map<String,String>> copyFields = fetchCopyFields(client, request.getCore());
@@ -183,23 +212,38 @@ public class SchemaServiceImpl implements SchemaService{
                             m.get("dest").equals(destField))){
             return ResponseEntity.badRequest().body("El copyField solicitado ya existe");
         }
-        
+
+        if(request.getMaxChars() <= 0){
+            return ResponseEntity.badRequest()
+            .body("maxChars debe ser un entero positivo");
+        }
+
         // Creación de copyfields
         String schemaUrl = buildBaseUrl(client, request.getCore() + "/schema");
-
         JsonObject newCopyField = new JsonObject();
         newCopyField.addProperty("source", request.getField());
         newCopyField.addProperty("dest", destField);
+        if(destDynamicType.contains("text") || destDynamicType.contains("string")){
+            newCopyField.addProperty("maxChars", request.getMaxChars());
+        }
         JsonArray arr = new JsonArray();
         arr.add(newCopyField);
         JsonObject command = new JsonObject();    
         command.add("add-copy-field", arr);
         restTemplate.postForEntity(schemaUrl, new HttpEntity<>(gson.toJson(command), headers), String.class);
-    
-        Map<String, String> created = Map.of(
-            "source", newCopyField.get("source").getAsString(),
-            "dest",   newCopyField.get("dest").getAsString()
-        );
+        Map<String, String> created;
+        if(destDynamicType.contains("text") || destDynamicType.contains("string")){
+            created = Map.of(
+                "source", newCopyField.get("source").getAsString(),
+                "dest",   newCopyField.get("dest").getAsString(),
+                "maxChars",   newCopyField.get("maxChars").getAsString()
+            );
+        }else{
+            created = Map.of(
+                "source", newCopyField.get("source").getAsString(),
+                "dest",   newCopyField.get("dest").getAsString()
+            );
+        }
 
         return ResponseEntity.ok(
             Map.of(
@@ -271,14 +315,19 @@ public class SchemaServiceImpl implements SchemaService{
         return out;
     }
 
-    // Obtener DynamicFields de la colección
-    private Map<String, String> fetchDynamicFields(ClientSolr client, String core){
+    // Obtener definición de DynamicFields de la colección
+    private List<JsonObject> fetchRawDynamicFields(ClientSolr client, String core){
         String url = buildBaseUrl(client, core) + "/schema/dynamicfields";
         String body = restTemplate.getForObject(url, String.class);
         JsonObject root = JsonParser.parseString(body).getAsJsonObject();
         JsonArray arr = root.getAsJsonArray("dynamicFields");
         Type listType = new TypeToken<List<JsonObject>>(){}.getType();
-        List<JsonObject> fields = gson.fromJson(arr, listType);
+        return gson.fromJson(arr, listType);
+    }
+        
+    // Obtener DynamicFields de la colección 
+    private  Map<String, String> fetchDynamicFields(ClientSolr client, String core){ 
+        List<JsonObject> fields = fetchRawDynamicFields(client, core);
         Map<String,String> map = new HashMap<>();
         for (JsonObject field : fields) {
             String name = field.get("name").getAsString();
@@ -293,5 +342,44 @@ public class SchemaServiceImpl implements SchemaService{
         log.info("Campos de dynamicFields para coleccion '{}': {}", core, map);
         return map;
     }
+
+    private boolean isCompatibleType(String source, String dest) {
+    String s = source.toLowerCase();
+    String d = dest.toLowerCase();
+
+    if (s.equals(d)){
+        return false;
+    }
+
+    if (s.contains("text") || s.contains("string")
+    || d.contains("text") || d.contains("string")) {
+        return true;
+    }
+
+    if(s.equals("point") && d.equals("point")){
+        boolean sNum = s.contains("int") || s.contains("long") || s.contains("double") || s.contains("float");
+        boolean dNum = d.contains("int") || d.contains("long") || d.contains("double") || d.contains("float");
+        if (sNum && dNum) {
+            return true;
+        }
+    }
+
+    boolean sLoc = s.contains("location");
+    boolean dLoc = d.contains("location");
+    boolean sLocR = s.contains("location_rpt");
+    boolean dLocR = d.contains("location_rpt");
+    boolean sPt  = s.contains("point");
+    boolean dPt  = d.contains("point");
+    if ((sLoc && dPt) || (sLocR && dLocR) || (sPt && dLoc)) {
+        return true;
+    }
+
+    if(d.contains("path") || d.contains("phone") || d.contains("lower") || 
+       d.contains(s)){
+        return true;
+    }
+    
+    return false;
+}
 
 }
