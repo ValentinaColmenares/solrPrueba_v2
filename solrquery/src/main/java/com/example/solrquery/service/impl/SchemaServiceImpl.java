@@ -162,94 +162,187 @@ public class SchemaServiceImpl implements SchemaService{
         // Validación de que exista el campo a hacerle el copyField
         Map<String, String> fields = fetchSchemaFields(client, request.getCore());
         if(!fields.containsKey(request.getField())){
-            return ResponseEntity.badRequest().body("El campo " + request.getField() + " no existe en la colección " + request.getCore());
+            return ResponseEntity.badRequest().body("El campo " + request.getField() + 
+                " no existe en la colección " + request.getCore());
         }
 
-        // Validación ingreso de tipo de copyField
-        if (request.getTypeCopyField() == null || request.getTypeCopyField().isBlank()) {
-            return ResponseEntity.badRequest().body("Es obligatorio el tipo de dato para hacer el copyField.");
+        // Validación de ingreso de tipo copyField o campo base para copyfield, no se aceptan ambos
+        if((request.getTypeCopyField() == null && request.getFieldToCopy() == null) || 
+            (request.getTypeCopyField().isBlank() && request.getFieldToCopy().isBlank())){
+            return ResponseEntity.badRequest().body("Es obligatorio especificar 'typeCopyField' o 'fieldToCopy'");
         }
 
-        // Validación de que exista el tipo de campo en dynamicFields
-        Map<String, String> dynamicFields = fetchDynamicFields(client, request.getCore());
-        if(!dynamicFields.containsKey(request.getTypeCopyField())){
-            return ResponseEntity.badRequest().body("El tipo de dato " + request.getTypeCopyField() + " no existe.");
+        if((!request.getTypeCopyField().isBlank()) && !request.getFieldToCopy().isBlank() ){
+            return ResponseEntity.badRequest().body("Debe especificar exclusivamente 'typeCopyField' o 'fieldToCopy', pero no ambos al mismo tiempo");
         }
-        
-        // Validación para no permitir multivalue -> single
+
+        if(!request.getTypeCopyField().isBlank()){
+            // Validación de que exista el tipo de campo en dynamicFields
+            Map<String, String> dynamicFields = fetchDynamicFields(client, request.getCore());
+            if(!dynamicFields.containsKey(request.getTypeCopyField())){
+                return ResponseEntity.badRequest().body("El tipo de dato " + request.getTypeCopyField() + " no existe.");
+            }
+        }
+
+        List<JsonObject> fieldsTypeDefs = fetchRawFieldTypes(client, request.getCore());
         List<JsonObject> fieldsDef = fetchRawSchemaFields(client, request.getCore());
-        JsonObject sourceFieldDef = fieldsDef.stream()
-            .filter(f -> f.get("name").getAsString().equals(request.getField()))
-            .findFirst().orElseThrow(() -> new IllegalArgumentException(
-        "El campo '" + request.getField() + "' no existe en el esquema"));
-        String sourceFieldType = sourceFieldDef.get("type").getAsString();
-        boolean sourceFieldMulti = sourceFieldDef.has("multiValued") && sourceFieldDef.get("multiValued").getAsBoolean();
-
-        List<JsonObject> dynamicFieldsDefs = fetchRawDynamicFields(client, request.getCore());
-        JsonObject destDynamicDef = dynamicFieldsDefs.stream()
-            .filter(f -> f.get("name").getAsString().equals("*_" + request.getTypeCopyField()))
-            .findFirst().orElseThrow(() -> new IllegalArgumentException(
-        "El tipo '" + request.getTypeCopyField() + "' no existe en dynamicFields"));
-        String destDynamicType = destDynamicDef.get("type").getAsString();
-        boolean destDynamicMulti = destDynamicDef.has("multiValued") && destDynamicDef.get("multiValued").getAsBoolean();
-
-        if(sourceFieldMulti && !destDynamicMulti){
-            return ResponseEntity.badRequest().body(
-            "No es posible crear un copyField desde un campo multivalor a uno de valor único.");
-        }
-
-        // Validación de compatibilidad de tipos
-        if (!isCompatibleType(sourceFieldType, destDynamicType)) {
-            return ResponseEntity.badRequest().body(
-                "No es posible crear un copyField de tipo '" + sourceFieldType +
-                "' a tipo dinámico '" + destDynamicType + "'.");
-        }
-
-        // Validación de existencia del copyField solicitado
         List<Map<String,String>> copyFields = fetchCopyFields(client, request.getCore());
-        String destField = request.getField() + "_" + request.getTypeCopyField();
-        if(copyFields.stream().anyMatch(m -> m.get("source").equals(request.getField()) &&
-                            m.get("dest").equals(destField))){
-            return ResponseEntity.badRequest().body("El copyField solicitado ya existe");
-        }
+        String schemaUrl = buildBaseUrl(client, request.getCore() + "/schema");
+        JsonObject newCopyField = new JsonObject();
+        Map<String, String> created = null;
 
         if(request.getMaxChars() <= 0){
             return ResponseEntity.badRequest()
             .body("maxChars debe ser un entero positivo");
         }
 
-        // Creación de copyfields
-        String schemaUrl = buildBaseUrl(client, request.getCore() + "/schema");
-        JsonObject newCopyField = new JsonObject();
-        newCopyField.addProperty("source", request.getField());
-        newCopyField.addProperty("dest", destField);
-        if(destDynamicType.contains("text") || destDynamicType.contains("string")){
-            newCopyField.addProperty("maxChars", request.getMaxChars());
+        // Validación para no permitir multivalue -> single
+        JsonObject sourceFieldDef = fieldsDef.stream()
+            .filter(f -> f.get("name").getAsString().equals(request.getField()))
+            .findFirst().orElseThrow(() -> new IllegalArgumentException(
+        "El campo '" + request.getField() + "' no existe en el esquema"));
+        String sourceFieldType = sourceFieldDef.get("type").getAsString();
+        JsonObject sourceTypeDef = fieldsTypeDefs.stream()
+            .filter(f -> f.get("name").getAsString().equals(sourceFieldType))
+            .findFirst().orElseThrow(() -> new IllegalArgumentException(
+        "El tipo '" + sourceFieldType + "' no existe en fieldTypes"));
+        boolean sourceFieldMulti = sourceFieldDef.has("multiValued") && sourceFieldDef.get("multiValued").getAsBoolean()
+                                        || (!sourceFieldDef.has("multiValued")  && sourceTypeDef.has("multiValued") 
+                                        && sourceTypeDef.get("multiValued").getAsBoolean());
+        
+        if(!request.getTypeCopyField().isBlank()){
+        
+            // Validación para no permitir multivalue -> single
+            List<JsonObject> dynamicFieldsDefs = fetchRawDynamicFields(client, request.getCore());
+            JsonObject destDynamicDef = dynamicFieldsDefs.stream()
+                .filter(f -> f.get("name").getAsString().equals("*_" + request.getTypeCopyField()))
+                .findFirst().orElseThrow(() -> new IllegalArgumentException(
+            "El tipo '" + request.getTypeCopyField() + "' no existe en dynamicFields"));
+            String destDynamicType = destDynamicDef.get("type").getAsString();
+            JsonObject destTypeDef = fieldsTypeDefs.stream()
+                .filter(f -> f.get("name").getAsString().equals(destDynamicType))
+                .findFirst().orElseThrow(() -> new IllegalArgumentException(
+            "El tipo '" + destDynamicType + "' no existe en fieldTypes"));
+            boolean destDynamicMulti = (destDynamicDef.has("multiValued") && destDynamicDef.get("multiValued").getAsBoolean())
+                                    || (!destDynamicDef.has("multiValued") && destTypeDef.has("multiValued") && destTypeDef.get("multiValued").getAsBoolean());
+
+            if(sourceFieldMulti && !destDynamicMulti){
+                return ResponseEntity.badRequest().body(
+                "No es posible crear un copyField desde un campo multivalor a uno de valor único.");
+            }
+
+            // Validación de compatibilidad de tipos
+            if (!isCompatibleType(sourceFieldType, destDynamicType)) {
+                return ResponseEntity.badRequest().body(
+                    "No es posible crear un copyField de tipo '" + sourceFieldType +
+                    "' a tipo '" + destDynamicType + "'.");
+            }
+
+            // Validación de existencia del copyField solicitado
+            String destField = request.getField() + "_" + request.getTypeCopyField();
+            if(copyFields.stream().anyMatch(m -> m.get("source").equals(request.getField()) &&
+                                m.get("dest").equals(destField))){
+                return ResponseEntity.badRequest().body("El copyField solicitado ya existe");
+            }
+
+            // Creación de copyfield
+            newCopyField.addProperty("source", request.getField());
+            newCopyField.addProperty("dest", destField);
+            if(destDynamicType.contains("text") || destDynamicType.contains("string")){
+                newCopyField.addProperty("maxChars", request.getMaxChars());
+            }
+            JsonArray arr = new JsonArray();
+            arr.add(newCopyField);
+            JsonObject command = new JsonObject();    
+            command.add("add-copy-field", arr);
+            restTemplate.postForEntity(schemaUrl, new HttpEntity<>(gson.toJson(command), headers), String.class);
+            if(destDynamicType.contains("text") || destDynamicType.contains("string")){
+                created = Map.of(
+                    "source", newCopyField.get("source").getAsString(),
+                    "dest",   newCopyField.get("dest").getAsString(),
+                    "maxChars",   newCopyField.get("maxChars").getAsString()
+                );
+            }else{
+                created = Map.of(
+                    "source", newCopyField.get("source").getAsString(),
+                    "dest",   newCopyField.get("dest").getAsString()
+                );
+            }
+
         }
-        JsonArray arr = new JsonArray();
-        arr.add(newCopyField);
-        JsonObject command = new JsonObject();    
-        command.add("add-copy-field", arr);
-        restTemplate.postForEntity(schemaUrl, new HttpEntity<>(gson.toJson(command), headers), String.class);
-        Map<String, String> created;
-        if(destDynamicType.contains("text") || destDynamicType.contains("string")){
-            created = Map.of(
-                "source", newCopyField.get("source").getAsString(),
-                "dest",   newCopyField.get("dest").getAsString(),
-                "maxChars",   newCopyField.get("maxChars").getAsString()
-            );
-        }else{
-            created = Map.of(
-                "source", newCopyField.get("source").getAsString(),
-                "dest",   newCopyField.get("dest").getAsString()
-            );
+
+        if(!request.getFieldToCopy().isBlank()){
+            
+            //Validación del campo para copiar
+            if(!fields.containsKey(request.getFieldToCopy())){
+            return ResponseEntity.badRequest().body("El campo para copiar '" + request.getFieldToCopy() + 
+                "' no existe en la colección '" + request.getCore() + "'");
+            }
+            
+            // Validación para no permitir multivalue -> single
+            JsonObject destFieldDef = fieldsDef.stream()
+            .filter(f -> f.get("name").getAsString().equals(request.getFieldToCopy()))
+            .findFirst().orElseThrow(() -> new IllegalArgumentException(
+            "El campo '" + request.getFieldToCopy() + "' no existe en el esquema"));
+            String destFieldType = destFieldDef.get("type").getAsString();
+            JsonObject destTypeDef = fieldsTypeDefs.stream()
+                .filter(f -> f.get("name").getAsString().equals(destFieldType))
+                .findFirst().orElseThrow(() -> new IllegalArgumentException(
+            "El tipo '" + destFieldType + "' no existe en fieldTypes"));
+            boolean destFieldMulti = destFieldDef.has("multiValued") && destFieldDef.get("multiValued").getAsBoolean()
+                                        || (!destFieldDef.has("multiValued")  && destTypeDef.has("multiValued") 
+                                        && destTypeDef.get("multiValued").getAsBoolean());
+            
+            if(sourceFieldMulti && !destFieldMulti){
+                return ResponseEntity.badRequest().body(
+                "No es posible crear un copyField desde un campo multivalor a uno de valor único.");
+            }
+
+            // Validación de compatibilidad de tipos
+            if (!isCompatibleType(sourceFieldType, destFieldType)) {
+                return ResponseEntity.badRequest().body(
+                    "No es posible crear un copyField de tipo '" + sourceFieldType +
+                    "' a tipo '" + destFieldType + "'.");
+            }
+
+            // Validación de existencia del copyField solicitado
+            if(copyFields.stream().anyMatch(m -> m.get("source").equals(request.getField()) &&
+                                m.get("dest").equals(request.getFieldToCopy()))){
+                return ResponseEntity.badRequest().body("El copyField solicitado ya existe");
+            }
+
+            // Creación de copyfield
+            newCopyField.addProperty("source", request.getField());
+            newCopyField.addProperty("dest", request.getFieldToCopy());
+            if(destFieldType.contains("text") || destFieldType.contains("string")){
+                newCopyField.addProperty("maxChars", request.getMaxChars());
+            }
+            JsonArray arr = new JsonArray();
+            arr.add(newCopyField);
+            JsonObject command = new JsonObject();    
+            command.add("add-copy-field", arr);
+            restTemplate.postForEntity(schemaUrl, new HttpEntity<>(gson.toJson(command), headers), String.class);
+            if(destFieldType.contains("text") || destFieldType.contains("string")){
+                created = Map.of(
+                    "source", newCopyField.get("source").getAsString(),
+                    "dest",   newCopyField.get("dest").getAsString(),
+                    "maxChars",   newCopyField.get("maxChars").getAsString()
+                );
+            }else{
+                created = Map.of(
+                    "source", newCopyField.get("source").getAsString(),
+                    "dest",   newCopyField.get("dest").getAsString()
+                );
+            }
+
         }
 
         return ResponseEntity.ok(
-            Map.of(
-                "createdCopyField", created
-            )
-        );
+                Map.of(
+                    "createdCopyField", created
+                )
+            );
+        
     }
 
     // Construcción de url base
@@ -343,6 +436,7 @@ public class SchemaServiceImpl implements SchemaService{
         return map;
     }
 
+    // Compatibiidad de tipos para copyfields
     private boolean isCompatibleType(String source, String dest) {
     String s = source.toLowerCase();
     String d = dest.toLowerCase();
@@ -380,6 +474,17 @@ public class SchemaServiceImpl implements SchemaService{
     }
     
     return false;
-}
+
+  }
+
+    // Obtener definición de Fieldtypes de la colección
+    private List<JsonObject> fetchRawFieldTypes(ClientSolr client, String core){
+        String url = buildBaseUrl(client, core) + "/schema/fieldtypes";
+        String body = restTemplate.getForObject(url, String.class);
+        JsonObject root = JsonParser.parseString(body).getAsJsonObject();
+        JsonArray arr = root.getAsJsonArray("fieldTypes");
+        Type listType = new TypeToken<List<JsonObject>>(){}.getType();
+        return gson.fromJson(arr, listType);
+    }
 
 }
